@@ -1,0 +1,188 @@
+# MP3 Converter Microservices System
+
+A distributed microservices architecture for converting video files to MP3 format using Kubernetes, RabbitMQ, and MongoDB.
+
+## System Architecture
+
+The system consists of the following microservices:
+
+### 1. Auth Service (`/auth`)
+- **Purpose**: User authentication and authorization
+- **Technologies**: Flask, MySQL, JWT
+- **Port**: 5000
+- **Endpoints**:
+  - `POST /login` - user login
+  - `POST /validate` - JWT token validation
+
+### 2. Gateway Service (`/gateway`)
+- **Purpose**: Main API gateway for file upload and download
+- **Technologies**: Flask, MongoDB, GridFS, RabbitMQ
+- **Port**: 8080
+- **Endpoints**:
+  - `POST /login` - proxy to auth service
+  - `POST /upload` - upload video files
+  - `GET /download` - download converted MP3 files
+
+### 3. Converter Service (`/converter`)
+- **Purpose**: Convert video to MP3 format
+- **Technologies**: Python, moviepy, RabbitMQ consumer
+- **Functionality**: Processes messages from RabbitMQ queue
+
+### 4. Notification Service (`/notification`)
+- **Purpose**: Send email notifications when MP3 is ready
+- **Technologies**: Python, SMTP, RabbitMQ consumer
+- **Functionality**: Sends email via Gmail SMTP
+
+### 5. RabbitMQ (`/rabbit`)
+- **Purpose**: Message broker for asynchronous processing
+- **Technologies**: RabbitMQ with persistence
+- **Ports**: 5672 (AMQP), 15672 (Management UI)
+
+## Infrastructure
+
+### Databases:
+- **MySQL**: For user data storage (auth service)
+- **MongoDB**: For video and MP3 file storage using GridFS
+
+### Message Queues:
+- **video**: Queue for conversion tasks
+- **mp3**: Queue for completion notifications
+
+## Installation and Deployment
+
+### Prerequisites:
+- Kubernetes cluster (Minikube recommended)
+- Docker
+- kubectl
+
+### Deployment Steps:
+
+1. **Build Docker Images**:
+```bash
+cd auth && docker build -t yourusername/auth .
+cd ../gateway && docker build -t yourusername/gateway .
+cd ../notification && docker build -t yourusername/notification .
+```
+
+2. **Deploy to Kubernetes**:
+```bash
+# Apply all manifests
+kubectl apply -f auth/manifests/
+kubectl apply -f gateway/manifests/
+kubectl apply -f notification/manifests/
+kubectl apply -f rabbit/manifests/
+```
+
+3. **DNS Setup** (for ingress):
+Add to `/etc/hosts`:
+
+```
+127.0.0.1 mp3converter.com
+127.0.0.1 rabbitmq-manager.com
+```
+
+## Usage
+
+1. **Authentication**:
+```bash
+curl -X POST -u "assylbek@email.com:Admin123" http://mp3converter.com/login
+```
+
+2. **Upload Video**:
+```bash
+curl -X POST -H "Authorization: Bearer <JWT_TOKEN>" \
+  -F "file=@video.mp4" http://mp3converter.com/upload
+```
+
+3. **Download MP3**:
+```bash
+curl -H "Authorization: Bearer <JWT_TOKEN>" \
+  http://mp3converter.com/download?fid=<FILE_ID> -o output.mp3
+```
+
+## Environment Variables
+
+### Auth Service:
+- `MYSQL_HOST`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DB`, `MYSQL_PORT`
+- `JWT_SECRET`
+
+### Gateway Service:
+- `AUTH_SVC_ADDRESS`
+
+### Notification Service:
+- `GMAIL_ADDRESS`, `GMAIL_PASSWORD`
+- `MP3_QUEUE`, `VIDEO_QUEUE`
+
+## Monitoring
+
+- **RabbitMQ Management**: http://rabbitmq-manager.com
+- **Kubernetes Dashboard**: `kubectl proxy`
+
+## Development
+
+Each service has its own Python virtual environment:
+```
+cd auth && source venv/bin/activate
+pip install -r requirements.txt
+```
+
+## Project Structure
+
+```
+system_design/
+└── python/
+    └── src/
+        ├── auth/                    # Authentication Service
+        │   ├── Dockerfile           # Docker configuration
+        │   ├── init.sql             # SQL database initialization
+        │   ├── manifests/           # Kubernetes manifests
+        │   │   ├── auth-deploy.yaml
+        │   │   ├── configmap.yaml
+        │   │   ├── secret.yaml
+        │   │   └── service.yaml
+        │   ├── requirements.txt     # Python dependencies
+        │   ├── server.py            # Main server
+        │   └── venv/                # Virtual environment
+        ├── converter/               # Converter Service
+        │   ├── __init__.py
+        │   └── to_mp3.py            # Conversion logic
+        ├── gateway/                 # API Gateway
+        │   ├── auth/                # Validation module
+        │   │   ├── __init__.py
+        │   │   └── validate.py
+        │   ├── auth_svc/            # Auth service access
+        │   │   ├── __init__.py
+        │   │   └── access.py
+        │   ├── Dockerfile
+        │   ├── manifests/           # Kubernetes manifests
+        │   │   ├── configmap.yaml
+        │   │   ├── gateway-deploy.yaml
+        │   │   ├── ingress.yaml
+        │   │   ├── secret.yaml
+        │   │   └── service.yaml
+        │   ├── requirements.txt
+        │   ├── server.py            # Main server
+        │   ├── storage/             # Storage module
+        │   │   ├── __init__.py
+        │   │   └── util.py
+        │   └── venv/                # Virtual environment
+        ├── notification/            # Notification Service
+        │   ├── consumer.py          # RabbitMQ consumer
+        │   ├── Dockerfile
+        │   ├── manifests/           # Kubernetes manifests
+        │   │   ├── configmap.yaml
+        │   │   ├── notification-deploy.yaml
+        │   │   └── secret.yaml
+        │   ├── requirements.txt
+        │   ├── send/                # Sending module
+        │   │   ├── __init__.py
+        │   │   └── email.py         # Email logic
+        │   └── venv/                # Virtual environment
+        └── rabbit/                  # RabbitMQ configuration
+            └── manifests/           # Kubernetes manifests
+                ├── configmap.yaml
+                ├── ingress.yaml
+                ├── pvc.yaml
+                ├── secret.yaml
+                ├── service.yaml
+                └── statefulset.yaml
